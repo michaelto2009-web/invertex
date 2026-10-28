@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>InVertex — Adaptive Text Contrast Tool</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231a1a1a'/%3E%3Ctext x='16' y='22' font-family='Arial' font-size='16' font-weight='900' fill='%23fbfbfd' text-anchor='middle'%3EV%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --ink:#1a1a1a;
+  --paper:#fbfbfd;
+  --muted:#6e6e73;
+  --line:#e5e5ea;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,"SF Pro Text","Helvetica Neue",Arial,sans-serif;background:var(--paper);color:var(--ink);overflow:hidden}
+
+/* ---------- stage ---------- */
+#stage{position:relative;height:calc(100vh - 60px);overflow:hidden;background:#15151a;cursor:grab;isolation:isolate;touch-action:none}
+#photo{
+  position:absolute;top:50%;left:50%;width:150%;height:190%;
+  transform:translate(-50%,-50%);
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800' viewBox='0 0 1200 800'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23dfe9f2'/%3E%3Cstop offset='.5' stop-color='%23f6efe4'/%3E%3Cstop offset='1' stop-color='%23f0c98f'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='1200' height='800' fill='url(%23g)'/%3E%3C/svg%3E") center/cover no-repeat;
+  will-change:transform;
+}
+#mesh{
+  position:absolute;inset:-20%;display:none;
+  background:
+    radial-gradient(38% 42% at 22% 30%, #ff5e3a 0%, transparent 70%),
+    radial-gradient(40% 45% at 78% 22%, #0a84ff 0%, transparent 70%),
+    radial-gradient(46% 50% at 65% 78%, #ffd60a 0%, transparent 70%),
+    radial-gradient(42% 46% at 28% 75%, #30d158 0%, transparent 70%),
+    #15151a;
+  filter:blur(30px) saturate(1.15);
+  animation:drift 18s ease-in-out infinite alternate;
+}
+@keyframes drift{
+  0%  {transform:translate(0,0) scale(1) rotate(0deg)}
+  50% {transform:translate(4%,-3%) scale(1.12) rotate(6deg)}
+  100%{transform:translate(-4%,3%) scale(1.05) rotate(-6deg)}
+}
+#stripes{position:absolute;inset:0;display:none;background:repeating-linear-gradient(115deg,#f5f5f7 0 90px,#1a1a1a 90px 180px,#0a84ff 180px 220px,#ffd60a 220px 260px)}
+
+/* ---------- blend text ---------- */
+#blend{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;will-change:transform;z-index:2;
+  color:#fff;mix-blend-mode:difference;
+}
+#blend h1{
+  pointer-events:auto;cursor:move;user-select:none;touch-action:none;
+  font-size:clamp(56px,11vw,150px);font-weight:900;letter-spacing:-.035em;line-height:.92;
+  outline:none;max-width:92%;text-align:center;word-break:break-word;
+}
+#blend.editing h1{cursor:text;-webkit-user-select:text;user-select:text}
+#hint{
+  position:absolute;right:16px;top:14px;z-index:3;pointer-events:none;
+  font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  mix-blend-mode:difference;color:#fff;opacity:.85;
+}
+/* brand mark lives on the canvas and inverts with it, same trick as the headline */
+#brand{
+  position:absolute;left:18px;top:16px;z-index:3;pointer-events:none;
+  display:flex;align-items:center;gap:9px;
+  mix-blend-mode:difference;color:#fff;
+}
+#brand .name{font-size:15px;font-weight:800;letter-spacing:-.01em}
+#brand svg{display:block}
+
+/* ---------- control bar ---------- */
+#bar{
+  position:fixed;left:0;right:0;bottom:0;height:60px;
+  display:flex;align-items:center;gap:14px;padding:0 18px;
+  background:var(--paper);border-top:1px solid var(--line);
+  overflow-x:auto;z-index:10;
+}
+.group{display:flex;align-items:center;gap:7px;flex-shrink:0}
+.label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.seg{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.seg button{font:inherit;font-size:12px;font-weight:600;padding:6px 12px;border:0;background:transparent;color:var(--ink);cursor:pointer;white-space:nowrap}
+.seg button.on{background:var(--ink);color:var(--paper)}
+.mini{
+  font:inherit;font-size:12px;font-weight:600;padding:6px 12px;border-radius:999px;
+  border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;white-space:nowrap;
+}
+.mini:active{opacity:.7}
+.mini.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.swatches{display:flex;gap:6px}
+.sw{width:22px;height:22px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0;flex-shrink:0}
+.sw.on{border-color:#0a84ff;box-shadow:0 0 0 2px var(--paper),0 0 0 4px #0a84ff}
+#size{-webkit-appearance:none;appearance:none;width:90px;height:3px;border-radius:2px;background:var(--line);outline:none}
+#size::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:var(--ink);cursor:pointer}
+#exportBtn{
+  margin-left:auto;font:inherit;font-size:12px;font-weight:700;padding:8px 16px;border-radius:999px;
+  border:1px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer;flex-shrink:0;white-space:nowrap;
+}
+#exportBtn:active{opacity:.8}
+
+/* ---------- export panel ---------- */
+#panel{
+  position:fixed;right:18px;bottom:76px;width:min(380px,calc(100vw - 36px));z-index:20;
+  background:var(--paper);border:1px solid var(--line);border-radius:16px;
+  box-shadow:0 12px 40px rgba(26,26,26,.16);overflow:hidden;
+  transform:translateY(10px);opacity:0;pointer-events:none;transition:transform .2s ease,opacity .2s ease;
+}
+#panel.open{transform:translateY(0);opacity:1;pointer-events:auto}
+.panel-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line);gap:8px}
+.panel-head span{font-size:12px;font-weight:800;letter-spacing:.02em}
+.pbtn{
+  font:inherit;font-size:11px;font-weight:700;padding:6px 14px;border-radius:999px;
+  border:0;background:var(--ink);color:var(--paper);cursor:pointer;white-space:nowrap;
+}
+.pbtn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+#code{
+  display:block;padding:14px;font-family:"SF Mono",Menlo,Consolas,monospace;
+  font-size:11px;line-height:1.7;color:#3a3a3c;white-space:pre;overflow-x:auto;
+  background:#f6f6f8;min-height:150px;
+}
+
+/* ---------- toast ---------- */
+#toast{
+  position:fixed;left:50%;bottom:76px;transform:translateX(-50%) translateY(8px);
+  background:var(--ink);color:var(--paper);font-size:12px;font-weight:600;
+  padding:9px 18px;border-radius:999px;z-index:30;opacity:0;pointer-events:none;
+  transition:opacity .2s ease,transform .2s ease;white-space:nowrap;
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div id="photo"></div>
+  <div id="mesh"></div>
+  <div id="stripes"></div>
+  <div id="brand">
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+      <rect x="1.5" y="1.5" width="29" height="29" rx="8" stroke="#fff" stroke-width="3"/>
+      <text x="16" y="23" font-family="Arial" font-size="17" font-weight="900" fill="#fff" text-anchor="middle">V</text>
+    </svg>
+    <span class="name">InVertex</span>
+  </div>
+  <div id="hint">drag to pan · drag type</div>
+  <div id="blend"><h1 id="h1" contenteditable="false" spellcheck="false">INVERTEX</h1></div>
+</div>
+
+<div id="bar">
+  <button class="mini" id="editBtn">Edit text</button>
+  <button class="mini" id="uploadBtn">Upload</button>
+  <input type="file" id="file" accept="image/*" hidden>
+  <div class="group">
+    <span class="label">background</span>
+    <div class="seg" id="bgSeg">
+      <button data-bg="photo" class="on">Photo</button>
+      <button data-bg="gradient">Gradient</button>
+      <button data-bg="stripes">Stripes</button>
+    </div>
+  </div>
+  <button class="mini" id="shuffle">Shuffle</button>
+  <div class="group">
+    <span class="label">colour</span>
+    <div class="swatches" id="swatches">
+      <button class="sw on" data-c="#ffffff" style="background:#f5f5f7" title="white"></button>
+      <button class="sw" data-c="#ffd60a" style="background:#ffd60a" title="yellow"></button>
+      <button class="sw" data-c="#0a84ff" style="background:#0a84ff" title="blue"></button>
+      <button class="sw" data-c="#30d158" style="background:#30d158" title="green"></button>
+      <button class="sw" data-c="#ff375f" style="background:#ff375f" title="red"></button>
+      <button class="sw" data-c="#ff9f0a" style="background:#ff9f0a" title="orange"></button>
+      <button class="sw" data-c="#bf5af2" style="background:#bf5af2" title="purple"></button>
+      <button class="sw" data-c="#64d2ff" style="background:#64d2ff" title="cyan"></button>
+    </div>
+  </div>
+  <div class="group">
+    <span class="label">size</span>
+    <input type="range" id="size" min="40" max="180" value="120">
+  </div>
+  <div class="group">
+    <span class="label">mode</span>
+    <div class="seg" id="modeSeg">
+      <button data-mode="difference" class="on">difference</button>
+      <button data-mode="exclusion">exclusion</button>
+    </div>
+  </div>
+  <button id="exportBtn">Export</button>
+</div>
+
+<div id="panel">
+  <div class="panel-head">
+    <div class="seg" id="whatSeg">
+      <button data-what="all" class="on">All</button>
+      <button data-what="effect">Effect</button>
+      <button data-what="background">Background</button>
+      <button data-what="js">Canvas JS</button>
+    </div>
+    <div style="display:flex;gap:6px;margin-left:auto">
+      <button class="pbtn ghost" id="pngBtn">Export PNG</button>
+      <button class="pbtn" id="copyBtn">Copy</button>
+    </div>
+  </div>
+  <code id="code"></code>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const state={bg:'photo',color:'#ffffff',mode:'difference'};
+const toast=(m)=>{const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2200);};
+
+/* ---------- online photo with fallback chain ---------- */
+const photo=$('photo');
+/* corsImg: same-origin copy of the photo, safe for canvas export */
+let corsImg=null,corsTainted=false;
+const DEFAULT_SKY="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800' viewBox='0 0 1200 800'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23dfe9f2'/%3E%3Cstop offset='.5' stop-color='%23f6efe4'/%3E%3Cstop offset='1' stop-color='%23f0c98f'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='1200' height='800' fill='url(%23g)'/%3E%3C/svg%3E";
+function setPhoto(url){
+  photo.style.backgroundImage=`url("${url}")`; /* instant paint */
+  corsImg=null;
+  if(url.startsWith('data:')||url.startsWith('blob:')){
+    const img=new Image();img.onload=()=>{corsImg=img;corsTainted=false;};img.src=url;
+    return;
+  }
+  /* remote: fetch a CORS-clean copy so PNG export never taints */
+  fetch(url,{mode:'cors'}).then(r=>{if(!r.ok)throw 0;return r.blob();}).then(b=>{
+    const bu=URL.createObjectURL(b);
+    const img=new Image();img.onload=()=>{corsImg=img;corsTainted=false;};img.src=bu;
+    photo.style.backgroundImage=`url("${bu}")`; /* swap to crisp same-origin copy */
+  }).catch(()=>{
+    const img=new Image();img.onload=()=>{corsImg=img;corsTainted=true;};img.src=url; /* display-only */
+  });
+}
+setPhoto(DEFAULT_SKY);
+$('shuffle').onclick=()=>setPhoto(`https://picsum.photos/seed/invertex-${Math.floor(Math.random()*99999)}/1400/1800`);
+
+/* ---------- upload own photo ---------- */
+$('uploadBtn').onclick=()=>$('file').click();
+$('file').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f)return;
+  const url=URL.createObjectURL(f);
+  photo.style.backgroundImage=`url("${url}")`;
+  corsImg=new Image();corsImg.src=url;corsTainted=false; /* blob URL: same-origin, canvas-safe */
+  ox=0;oy=0;photo.style.transform='translate(-50%,-50%)';
+  if(state.bg!=='photo'){
+    state.bg='photo';
+    document.querySelectorAll('#bgSeg button').forEach(x=>x.classList.toggle('on',x.dataset.bg==='photo'));
+    for(const k in layers)layers[k].style.display=(k==='photo')?'block':'none';
+  }
+  toast('Photo uploaded');
+  renderCode();
+});
+
+/* ---------- layers ---------- */
+const layers={photo,mesh:$('mesh'),stripes:$('stripes')};
+$('bgSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('#bgSeg button').forEach(x=>x.classList.toggle('on',x===b));
+  state.bg=b.dataset.bg;
+  for(const k in layers)layers[k].style.display=(k===state.bg)?'block':'none';
+  renderCode();
+});
+
+/* ---------- drag with inertia ---------- */
+function makeDraggable(el,onMove){
+  let dragging=false,px=0,py=0,vx=0,vy=0,last=0,raf=0;
+  el.addEventListener('pointerdown',e=>{
+    if(el._noDrag)return;
+    dragging=true;px=e.clientX;py=e.clientY;vx=vy=0;last=performance.now();
+    el.setPointerCapture(e.pointerId);cancelAnimationFrame(raf);
+  });
+  el.addEventListener('pointermove',e=>{
+    if(!dragging)return;
+    const now=performance.now(),dt=Math.max(now-last,1);
+    const dx=e.clientX-px,dy=e.clientY-py;
+    vx=dx/dt*16;vy=dy/dt*16;px=e.clientX;py=e.clientY;last=now;
+    onMove(dx,dy);
+  });
+  const release=()=>{
+    if(!dragging)return;dragging=false;
+    (function glide(){
+      vx*=.94;vy*=.94;
+      if(Math.abs(vx)<.1&&Math.abs(vy)<.1)return;
+      onMove(vx,vy);raf=requestAnimationFrame(glide);
+    })();
+  };
+  el.addEventListener('pointerup',release);
+  el.addEventListener('pointercancel',release);
+}
+
+/* pan the photo */
+const stage=$('stage');
+let ox=0,oy=0;
+function panPhoto(dx,dy){
+  ox+=dx;oy+=dy;
+  const st=stage.getBoundingClientRect();
+  const limX=(photo.offsetWidth-st.width)/2,limY=(photo.offsetHeight-st.height)/2;
+  ox=Math.max(-limX,Math.min(limX,ox));
+  oy=Math.max(-limY,Math.min(limY,oy));
+  photo.style.transform=`translate(calc(-50% + ${ox}px), calc(-50% + ${oy}px))`;
+}
+makeDraggable(stage,panPhoto);
+
+/* move the type */
+const blend=$('blend'),h1=$('h1');
+h1.addEventListener('pointerdown',e=>e.stopPropagation());
+let tx=0,ty=0;
+makeDraggable(h1,(dx,dy)=>{
+  tx+=dx;ty+=dy;
+  blend.style.transform=`translate(${tx}px, ${ty}px)`;
+});
+
+/* ---------- text editing ---------- */
+let editing=false;
+$('editBtn').onclick=()=>{
+  editing=!editing;
+  $('editBtn').classList.toggle('on',editing);
+  $('editBtn').textContent=editing?'Done':'Edit text';
+  blend.classList.toggle('editing',editing);
+  h1._noDrag=editing;
+  h1.contentEditable=editing;
+  $('hint').textContent=editing?'type your text · done to finish':'drag to pan · drag type';
+  if(editing){h1.focus();document.execCommand('selectAll',false,null);}
+};
+
+/* ---------- size slider ---------- */
+$('size').addEventListener('input',e=>{
+  h1.style.fontSize=e.target.value+'px';
+});
+
+/* ---------- colour & mode ---------- */
+$('swatches').addEventListener('click',e=>{
+  const b=e.target.closest('.sw');if(!b)return;
+  document.querySelectorAll('.sw').forEach(x=>x.classList.toggle('on',x===b));
+  state.color=b.dataset.c;blend.style.color=state.color;renderCode();
+});
+$('modeSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x===b));
+  state.mode=b.dataset.mode;blend.style.mixBlendMode=state.mode;renderCode();
+});
+
+/* ---------- export: CSS ---------- */
+const panel=$('panel'),code=$('code');
+let what='all';
+function snippets(){
+  const bgSnippet={
+    photo:`background:url("your-image.jpg") center/cover; /* drag-tested image */`,
+    gradient:`background:
+  radial-gradient(38% 42% at 22% 30%, #ff5e3a, transparent 70%),
+  radial-gradient(40% 45% at 78% 22%, #0a84ff, transparent 70%),
+  radial-gradient(46% 50% at 65% 78%, #ffd60a, transparent 70%),
+  radial-gradient(42% 46% at 28% 75%, #30d158, transparent 70%),
+  #15151a;
+filter: blur(30px) saturate(1.15);`,
+    stripes:`background: repeating-linear-gradient(115deg,#f5f5f7 0 90px,#1a1a1a 90px 180px,#0a84ff 180px 220px,#ffd60a 220px 260px);`
+  }[state.bg];
+  const stage=
+`/* parent: keep the blend contained */
+.stage {
+  position: relative;
+  isolation: isolate;   /* stops blending with the page */
+  overflow: hidden;
+}`;
+  const background=
+`/* background layer */
+.backdrop {
+  position: absolute;
+  inset: 0;
+  ${bgSnippet}
+}`;
+  const effect=
+`/* adaptive text — flips its own background, live */
+.headline {
+  color: ${state.color};
+  mix-blend-mode: ${state.mode};
+}`;
+  const js=
+`/* canvas has no mix-blend-mode: re-implement the blend per pixel
+   (call after drawing your background) */
+function blendText(ctx, W, H, text, color, mode) {
+  const mask = document.createElement('canvas');
+  mask.width = W; mask.height = H;
+  const m = mask.getContext('2d');
+  m.font = '900 120px Helvetica, Arial, sans-serif';
+  m.textAlign = 'center';
+  m.fillStyle = '#fff';
+  m.fillText(text, W / 2, H / 2);
+
+  const bg = ctx.getImageData(0, 0, W, H);
+  const mk = m.getImageData(0, 0, W, H);
+  const c = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16));
+  const d = bg.data, md = mk.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const a = md[i + 3] / 255;
+    if (a === 0) continue;
+    for (let ch = 0; ch < 3; ch++) {
+      const v = mode === 'exclusion'
+        ? d[i + ch] + c[ch] - 2 * d[i + ch] * c[ch] / 255
+        : Math.abs(d[i + ch] - c[ch]);
+      d[i + ch] = d[i + ch] * (1 - a) + v * a;
+    }
+  }
+  ctx.putImageData(bg, 0, 0);
+}`;
+  return {stage,background,effect,js};
+}
+function renderCode(){
+  const s=snippets();
+  code.textContent={
+    all:[s.stage,s.background,s.effect].join('\n\n'),
+    effect:[s.stage,s.effect].join('\n\n'),
+    background:s.background,
+    js:s.js
+  }[what];
+}
+renderCode();
+$('whatSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('#whatSeg button').forEach(x=>x.classList.toggle('on',x===b));
+  what=b.dataset.what;renderCode();
+});
+
+$('exportBtn').onclick=()=>{panel.classList.toggle('open');renderCode();};
+$('copyBtn').onclick=async()=>{
+  const txt=code.textContent;
+  try{await navigator.clipboard.writeText(txt);}
+  catch(_){
+    const ta=document.createElement('textarea');
+    ta.value=txt;document.body.appendChild(ta);ta.select();
+    document.execCommand('copy');ta.remove();
+  }
+  $('copyBtn').textContent='Copied';
+  setTimeout(()=>$('copyBtn').textContent='Copy',1400);
+};
+
+/* ---------- export: PNG (canvas re-implements the blend, pixel by pixel) ---------- */
+function hex2rgb(h){
+  h=h.replace('#','');
+  return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];
+}
+function drawCover(ctx,img,dw,dh){
+  /* emulate CSS background-size: cover for a dw x dh box */
+  const s=Math.max(dw/img.width,dh/img.height);
+  const w=img.width*s,h=img.height*s;
+  ctx.drawImage(img,(dw-w)/2,(dh-h)/2,w,h);
+}
+$('pngBtn').onclick=()=>{
+  const SCALE=2;
+  const st=stage.getBoundingClientRect();
+  const W=Math.round(st.width*SCALE),H=Math.round(st.height*SCALE);
+  const cv=document.createElement('canvas');cv.width=W;cv.height=H;
+  const ctx=cv.getContext('2d');
+
+  /* --- paint background --- */
+  if(state.bg==='photo'){
+    if(!corsImg){toast('Photo still loading…');return;}
+    if(corsTainted){toast('This remote photo blocks export — upload your own or use Shuffle');return;}
+    const ew=W*1.5,eh=H*1.9; /* photo element is 150% x 190% of stage */
+    const tmp=document.createElement('canvas');tmp.width=ew;tmp.height=eh;
+    drawCover(tmp.getContext('2d'),corsImg,ew,eh);
+    ctx.drawImage(tmp,(W-ew)/2+ox*SCALE,(H-eh)/2+oy*SCALE);
+  }else if(state.bg==='gradient'){
+    const gw=W*1.4,gh=H*1.4; /* mesh uses inset:-20% */
+    const tmp=document.createElement('canvas');tmp.width=gw;tmp.height=gh;
+    const t=tmp.getContext('2d');
+    const orbs=[
+      [.22,.30,.38,.42,'#ff5e3a'],[.78,.22,.40,.45,'#0a84ff'],
+      [.65,.78,.46,.50,'#ffd60a'],[.28,.75,.42,.46,'#30d158']
+    ];
+    t.fillStyle='#15151a';t.fillRect(0,0,gw,gh);
+    for(const [cx,cy,rx,ry,col] of orbs){
+      const g=t.createRadialGradient(cx*gw,cy*gh,0,cx*gw,cy*gh,Math.max(rx*gw,ry*gh));
+      g.addColorStop(0,col);g.addColorStop(1,'rgba(21,21,26,0)');
+      t.fillStyle=g;
+      t.save();t.translate(cx*gw,cy*gh);t.scale(1,(ry*gh)/(rx*gw));t.translate(-cx*gw,-cy*gh);
+      t.beginPath();t.arc(cx*gw,cy*gh,rx*gw,0,7);t.fill();t.restore();
+    }
+    ctx.filter=`blur(${30*SCALE}px) saturate(1.15)`;
+    ctx.drawImage(tmp,-W*.2,-H*.2);
+    ctx.filter='none';
+  }else{ /* stripes */
+    ctx.save();
+    ctx.translate(W/2,H/2);ctx.rotate(115*Math.PI/180);
+    const cols=[['#f5f5f7',90],['#1a1a1a',90],['#0a84ff',40],['#ffd60a',40]];
+    const period=cols.reduce((a,c)=>a+c[1],0);
+    const diag=Math.hypot(W,H);
+    for(let x=-diag/2,pi=0;;x+=cols[pi%4][1],pi++){
+      if(x>diag/2)break;
+      ctx.fillStyle=cols[pi%4][0];
+      ctx.fillRect(x,-diag/2,cols[pi%4][1],diag);
+    }
+    ctx.restore();
+  }
+
+  /* --- text: draw white mask, then blend pixel-by-pixel --- */
+  const lines=h1.innerText.split('\n').filter(l=>l.trim()!=='');
+  if(lines.length){
+    const cs=getComputedStyle(h1);
+    let fs=parseFloat(cs.fontSize)*SCALE;
+    const family=cs.fontFamily,weight=cs.fontWeight;
+    const ls=parseFloat(cs.letterSpacing)||0;
+    const lh=fs*.92;
+
+    const mask=document.createElement('canvas');mask.width=W;mask.height=H;
+    const m=mask.getContext('2d');
+    /* shrink-to-fit: match the DOM wrap width */
+    m.font=`${weight} ${fs}px ${family}`;
+    if('letterSpacing' in m)m.letterSpacing=(ls*SCALE)+'px';
+    const maxLine=Math.max(...lines.map(l=>m.measureText(l).width));
+    if(maxLine>W*.92){fs*=W*.92/maxLine;m.font=`${weight} ${fs}px ${family}`;if('letterSpacing' in m)m.letterSpacing=ls*SCALE*fs/(parseFloat(cs.fontSize)*SCALE)+'px';}
+    m.fillStyle='#fff';m.textAlign='center';m.textBaseline='alphabetic';
+    const cxp=W/2+tx*SCALE, cyp=H/2+ty*SCALE;
+    const total=lines.length*lh;
+    lines.forEach((l,i)=>{
+      const base=cyp-total/2+(i+1)*lh-fs*.08;
+      m.fillText(l,cxp,base);
+    });
+
+    const bg=ctx.getImageData(0,0,W,H);
+    const mk=m.getImageData(0,0,W,H);
+    const [fr,fgc,fb]=hex2rgb(state.color);
+    const d=bg.data,md=mk.data;
+    for(let i=0;i<d.length;i+=4){
+      const a=md[i+3]/255;
+      if(a===0)continue;
+      let r,g,b;
+      if(state.mode==='difference'){r=Math.abs(d[i]-fr);g=Math.abs(d[i+1]-fgc);b=Math.abs(d[i+2]-fb);}
+      else{r=d[i]+fr-2*d[i]*fr/255;g=d[i+1]+fgc-2*d[i+1]*fgc/255;b=d[i+2]+fb-2*d[i+2]*fb/255;}
+      d[i]  =d[i]  *(1-a)+r*a;
+      d[i+1]=d[i+1]*(1-a)+g*a;
+      d[i+2]=d[i+2]*(1-a)+b*a;
+    }
+    ctx.putImageData(bg,0,0);
+  }
+
+  cv.toBlob(b=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(b);
+    a.download='invertex.png';
+    a.click();
+    toast('PNG exported');
+  },'image/png');
+};
+</script>
+</body>
+</html>
